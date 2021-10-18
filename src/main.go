@@ -12,7 +12,7 @@ func HelloWord(resp http.ResponseWriter, req *http.Request) {
 	var err error
 	log.Println("host: ", req.Host)
 	for s := range req.Header {
-		fmt.Println(s + ":" + req.Header.Get(s))
+		log.Println(s + ":" + req.Header.Get(s))
 		resp.Header().Set(s, req.Header.Get(s))
 	}
 	command := exec.Command("/bin/bash", "-c", "cat /proc/version")
@@ -26,7 +26,7 @@ func HelloWord(resp http.ResponseWriter, req *http.Request) {
 
 func start() {
 	http.HandleFunc("/healthz", HelloWord)
-	err := http.ListenAndServe("localhost:9999", nil)
+	err := http.ListenAndServe(":9999", nil)
 	if err != nil {
 		log.Fatalln("ListenAndServe: ", err.Error())
 	}
