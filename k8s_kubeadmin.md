@@ -1,7 +1,7 @@
 #K8S搭建手册-Kubeadmin版
 ##安装要求
 1.一台及以上机器,linux系统(ubuntu-server 20.04LTS)  
-2.硬件要求: 2CPU 2GB内存   
+2.硬件要求: 2CPU 2GB内存 30G硬盘   
 3.机器间内网可访问且通外网  
 4.关闭防火墙，swap
 
@@ -16,7 +16,7 @@ vim /etc/fstab
 注释掉最后一行(swap)
 ```
 
-##准备工作
+#准备工作
 所有机器进行update
 ```shell
 sudo apt-get update
@@ -44,10 +44,7 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
 ```
 添加docker的阿里云仓库
 ```shell
-sudo add-apt-repository \   
-   "deb [arch=amd64] https://mirrors.ustc.edu.cn/docker-ce/linux/ubuntu \
-   $(lsb_release -cs) \
-   stable"
+sudo add-apt-repository "deb [arch=amd64] https://mirrors.ustc.edu.cn/docker-ce/linux/ubuntu $(lsb_release -cs) stable"
 ```
 再一次更新系统以及安装docker
 ```shell
@@ -58,32 +55,53 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io
 ##安装k8s
 install kubeadm,kubelet,kubectl
 ```shell
-cat <<EOF > /etc/apt/sources.list.d/kubernetes.list
- deb https://mirrors.aliyun.com/kubernetes/apt kubernetes-xenial main
- EOF
-```
-```shell
 curl -s https://mirrors.aliyun.com/kubernetes/apt/doc/apt-key.gpg | sudo apt-key add
 ```
 ```shell
-sudo apt-get update
-sudo apt-get install -y kubelet=1.19.15-00 kubeadm=1.19.15-00 kubectl=1.19.15-00
-sudo apt-mark hold kubelet kubeadm kubectl
+cat <<EOF> /etc/apt/sources.list.d/kubernetes.list
+deb https://mirrors.aliyun.com/kubernetes/apt kubernetes-xenial main
+EOF
 ```
-将kubelet加入开机自启服务列表
+```shell
+sudo apt-get update
+sudo apt-get install -y kubelet=1.24.3 kubeadm=1.24.3-00 kubectl=1.24.3-00
+sudo apt-mark hold kubelet kubeadm kubectl  //禁止这三个自动升级
+```
+###将kubelet加入开机自启服务列表
 ```shell
 systemctl enable kubelet
 ```
-kube init(仅master节点)
+###修改containerd配置文件
+```shell
+mkdir /etc/containerd -p
+containerd config default > /etc/containerd/config.toml
+vim /etc/containerd/config.toml
+```
+将下面两个地方进行修改
+```shell
+SystemdCgroup = false >> SystemdCgroup = true
+sandbox_image = "k8s.gcr.io/pause:3.6" >> sandbox_image = "registry.aliyuncs.com/google_containers/pause:3.6"
+```
+重启containerd,并查看状态
+```shell
+systemctl enable containerd
+systemctl restart containerd
+systemctl status containerd
+```
+###kube init(仅master节点)
 ```shell
 kubeadm init \   
- --image-repository registry.aliyuncs.com/google_containers \   #国内镜像源
- --kubernetes-version v1.19.15 \
- --apiserver-advertise-address=192.168.34.2 \     #master节点内网ip
- --service-cidr=10.96.0.0/12 \                    #svc网络段
- --pod-network-cidr=10.244.0.0/16                 #pod网络段
+ --image-repository registry.aliyuncs.com/google_containers \   
+ --kubernetes-version v1.24.3 \   
+ --apiserver-advertise-address=192.168.56.2 \   
+ --service-cidr=10.96.0.0/12 \   
+ --pod-network-cidr=10.244.0.0/16
 ```
-注: svc和pod网段不能相同
+注:  
+1.service-cidr svc网络段     
+2.pod-network-cidr pod网络段     
+3.svc和pod网段不能相同
+4.image-repository 镜像源地址
 根据init结束后的提示  执行下面命令
 ```shell
 mkdir -p $HOME/.kube
@@ -115,7 +133,10 @@ vim calico.yaml
 - name: CALICO_IPV4POOL_CIDR
   value: "10.244.0.0/16"
 ```
-
+master节点
+```shell
+kubectl apply -f calico.yaml
+```
 检验是否安装完成
 ```shell
 root@k8s-master:~# kubectl get pods -n kube-system -o wide
